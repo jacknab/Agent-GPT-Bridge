@@ -1,45 +1,95 @@
-# [Project name]
+# Night Watch — Apartment Telephone Agent
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+An AI-powered after-hours answering service for apartment complexes. Callers ring a Twilio phone number and are connected in real time to an OpenAI GPT-4o Realtime voice agent that handles maintenance requests, answers questions, and takes messages. A web dashboard lets property managers monitor call history and configure the agent.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
+- `pnpm --filter @workspace/dashboard run dev` — run the dashboard (port 23183)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
+- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+
+## Required Secrets
+
+| Secret | Description |
+|---|---|
+| `OPENAI_API_KEY` | OpenAI API key — must have Realtime API access |
+| `TWILIO_ACCOUNT_SID` | Twilio Account SID |
+| `TWILIO_AUTH_TOKEN` | Twilio Auth Token |
+
+## Twilio Configuration
+
+After deploying, configure Twilio to point your phone number at this app:
+
+1. Go to **Twilio Console → Phone Numbers → Manage → Active Numbers**
+2. Click your number → **Voice Configuration**
+3. Set **"A call comes in"** webhook to: `https://YOUR_DOMAIN/api/twilio/voice` (HTTP POST)
+4. Set **"Call status changes"** to: `https://YOUR_DOMAIN/api/twilio/status` (HTTP POST)
+
+The WebSocket bridge is served at: `wss://YOUR_DOMAIN/api/twilio/stream`
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- **pnpm workspaces**, Node.js 24, TypeScript 5.9
+- **API**: Express 5 + WebSocket (ws package)
+- **AI**: OpenAI GPT-4o Realtime API (gpt-4o-realtime-preview-2024-12-17) via raw WebSocket
+- **Telephone**: Twilio Media Streams (G.711 µ-law audio — no conversion needed)
+- **DB**: PostgreSQL + Drizzle ORM
+- **Validation**: Zod (zod/v4), drizzle-zod
+- **Frontend**: React + Vite, TanStack Query, shadcn/ui, wouter, Tailwind CSS
+- **API codegen**: Orval (from OpenAPI spec)
 
-## Where things live
+## Where Things Live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+| Concern | Location |
+|---|---|
+| OpenAPI spec | `lib/api-spec/openapi.yaml` |
+| DB schema | `lib/db/src/schema/` |
+| WebSocket bridge (Twilio ↔ OpenAI) | `artifacts/api-server/src/lib/realtimeBridge.ts` |
+| Twilio webhook routes | `artifacts/api-server/src/routes/twilio/index.ts` |
+| Call log routes | `artifacts/api-server/src/routes/calls/index.ts` |
+| Agent config routes | `artifacts/api-server/src/routes/config/index.ts` |
+| Dashboard frontend | `artifacts/dashboard/src/` |
 
-## Architecture decisions
+## Architecture
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+```
+Caller
+  │  (PSTN)
+  ▼
+Twilio Phone Number
+  │  POST /api/twilio/voice  →  TwiML: <Connect><Stream url="wss://..."/></Connect>
+  │
+  ├─ WebSocket: /api/twilio/stream  ←──────────────────────────────────┐
+  │      │  (G.711 µ-law audio, 8kHz)                                  │
+  │      ▼                                                              │
+  │  realtimeBridge.ts                                                  │
+  │      │  (G.711 µ-law audio, 8kHz — same format, no conversion)     │
+  │      ▼                                                              │
+  │  OpenAI Realtime API (gpt-4o-realtime-preview)  ──── audio back ──►┘
+  │
+  └─ POST /api/twilio/status  →  Updates call record in PostgreSQL
+```
 
-## Product
+Audio flows directly between Twilio and OpenAI in G.711 µ-law format — no transcoding required. Transcripts are accumulated from OpenAI events and saved to the DB when the call ends.
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+## Architecture Decisions
 
-## User preferences
+- **Raw WebSocket to OpenAI Realtime** — avoids the OpenAI SDK's Realtime client abstraction, keeping the bridge transparent and debuggable.
+- **G.711 µ-law passthrough** — Twilio Media Streams and OpenAI Realtime both support `g711_ulaw`. No conversion, no latency penalty.
+- **Server VAD** — OpenAI's server-side voice activity detection handles turn-taking; no client-side VAD logic needed.
+- **Singleton agent config** — Config is a single row in `agent_config`; the bridge reads it fresh on each call connection.
+- **Orval coerce.response += 'number'** — Added to prevent Orval v8.23 from generating `zod.int()` (Zod v4 only) in response schemas when the project uses Zod v3.
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+## User Preferences
+
+_Populate as needed._
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- After any schema change in `lib/api-spec/openapi.yaml`, re-run `pnpm --filter @workspace/api-spec run codegen` then `pnpm run typecheck:libs`.
+- The `@workspace/db` tables are not visible to leaf packages until `pnpm run typecheck:libs` has been run after schema changes.
+- WebSocket connections from Twilio arrive at `/api/twilio/stream`; this is already under the `/api` path registered in the api-server artifact.toml so no extra config is needed.
+- The OpenAI Realtime API model env var `OPENAI_REALTIME_MODEL` defaults to `gpt-4o-realtime-preview-2024-12-17`.

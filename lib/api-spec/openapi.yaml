@@ -3,20 +3,24 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Telephone Agent API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: calls
+    description: Call log operations
+  - name: config
+    description: Agent configuration operations
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +28,170 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /calls:
+    get:
+      operationId: listCalls
+      tags: [calls]
+      summary: List recent calls
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of calls
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Call"
+
+  /calls/stats:
+    get:
+      operationId: getCallStats
+      tags: [calls]
+      summary: Get aggregate call statistics
+      responses:
+        "200":
+          description: Call statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallStats"
+
+  /calls/{id}:
+    get:
+      operationId: getCall
+      tags: [calls]
+      summary: Get a single call with full transcript
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Call detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Call"
+        "404":
+          description: Not found
+
+  /config:
+    get:
+      operationId: getConfig
+      tags: [config]
+      summary: Get agent configuration
+      responses:
+        "200":
+          description: Current configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+    put:
+      operationId: updateConfig
+      tags: [config]
+      summary: Update agent configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentConfigInput"
+      responses:
+        "200":
+          description: Updated configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    Call:
+      type: object
+      required: [id, callSid, fromNumber, toNumber, status, createdAt]
+      properties:
+        id:
+          type: integer
+        callSid:
+          type: string
+        fromNumber:
+          type: string
+        toNumber:
+          type: string
+        status:
+          type: string
+        durationSeconds:
+          type: ["integer", "null"]
+        transcript:
+          type: ["string", "null"]
+        summary:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: ["string", "null"]
+          format: date-time
+
+    CallStats:
+      type: object
+      required: [totalCalls, callsToday, averageDurationSeconds, callsByStatus]
+      properties:
+        totalCalls:
+          type: integer
+        callsToday:
+          type: integer
+        averageDurationSeconds:
+          type: ["number", "null"]
+        callsByStatus:
+          type: object
+          additionalProperties:
+            type: integer
+
+    AgentConfig:
+      type: object
+      required: [id, systemPrompt, voice, greeting, updatedAt]
+      properties:
+        id:
+          type: integer
+        systemPrompt:
+          type: string
+        voice:
+          type: string
+        greeting:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+
+    AgentConfigInput:
+      type: object
+      properties:
+        systemPrompt:
+          type: string
+        voice:
+          type: string
+        greeting:
+          type: string
