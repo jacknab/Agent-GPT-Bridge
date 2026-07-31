@@ -34,7 +34,7 @@ The WebSocket bridge is served at: `wss://YOUR_DOMAIN/api/twilio/stream`
 
 - **pnpm workspaces**, Node.js 24, TypeScript 5.9
 - **API**: Express 5 + WebSocket (ws package)
-- **AI**: OpenAI GPT-4o Realtime API (gpt-4o-realtime-preview-2024-12-17) via raw WebSocket
+- **AI**: OpenAI GPT-4o Realtime API (gpt-4o-realtime-preview-2025-06-03) via raw WebSocket
 - **Telephone**: Twilio Media Streams (G.711 µ-law audio — no conversion needed)
 - **DB**: PostgreSQL + Drizzle ORM
 - **Validation**: Zod (zod/v4), drizzle-zod

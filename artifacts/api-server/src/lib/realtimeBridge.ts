@@ -5,7 +5,7 @@ import { logger } from "./logger";
 
 const OPENAI_MODEL =
   process.env["OPENAI_REALTIME_MODEL"] ??
-  "gpt-4o-realtime-preview-2024-12-17";
+  "gpt-4o-realtime-preview-2025-06-03";
 const OPENAI_WS_URL = `wss://api.openai.com/v1/realtime?model=${OPENAI_MODEL}`;
 
 const DEFAULT_SYSTEM_PROMPT = `You are a professional after-hours answering service for an apartment complex. 
